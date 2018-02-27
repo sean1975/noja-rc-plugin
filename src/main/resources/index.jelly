@@ -1,0 +1,4 @@
+<?jelly escape-by-default='true'?>
+<div>
+    This plugin allows Jenkins administrators to manage NOJA Power Relay Controller
+</div>
