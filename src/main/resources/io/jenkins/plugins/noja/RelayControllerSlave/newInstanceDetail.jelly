@@ -1,0 +1,4 @@
+<?jelly escape-by-default='true'?>
+<div>
+    Adds a NOJA Power Relay Controller to Jenkins. LAN option in protocol and port settings must be enabled for CMS protocol.
+</div>

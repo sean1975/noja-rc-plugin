@@ -52,6 +52,9 @@ public class RelayControllerSlave extends Slave {
 
         @Override
         public String getDisplayName() {
+            // Return the display name shown in http://server/hudson/computers/new</tt> page as an agent type
+            // The detail explanation for this agent type is loaded from
+            // src/main/resources/io/jenkins/plugins/noja/RelayControllerSlave/newInstanceDetail.jelly
             return "Relay Controller";
         }
     }
