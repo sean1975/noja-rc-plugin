@@ -7,6 +7,7 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
 import hudson.Extension;
+import hudson.FilePath;
 import hudson.model.Slave;
 import hudson.model.Descriptor.FormException;
 import hudson.slaves.ComputerLauncher;
@@ -20,7 +21,11 @@ public class RelayControllerSlave extends Slave {
 
     @DataBoundConstructor
     public RelayControllerSlave(String name, ComputerLauncher launcher) throws FormException, IOException {
-        super(name, "", launcher == null ? new RelayControllerLauncher() : launcher);
+        super(name, null, new ComputerLauncher() {
+            public boolean isLaunchSupported() {
+                return false;
+            }
+        });
         setNumExecutors(1);
     }
 
@@ -47,6 +52,11 @@ public class RelayControllerSlave extends Slave {
         return new RelayControllerComputer(this);
     }
 
+    @Override
+    public FilePath getRootPath() {
+        return null;
+    }
+    
     @Extension
     public static final class DescriptorImpl extends SlaveDescriptor {
 

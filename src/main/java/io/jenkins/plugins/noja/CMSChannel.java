@@ -4,11 +4,25 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 import java.util.HashMap;
 import java.io.DataOutputStream;
+import java.io.IOException;
 import java.io.DataInputStream;
 
-public class CMSChannel {
+import hudson.model.Node;
+import hudson.node_monitors.ArchitectureMonitor;
+import hudson.node_monitors.ResponseTimeMonitor;
+import hudson.node_monitors.ResponseTimeMonitor.Data;
+import hudson.remoting.Callable;
+import hudson.remoting.Future;
+import hudson.remoting.VirtualChannel;
+import hudson.util.Futures;
+
+
+public class CMSChannel implements VirtualChannel {
+
+    private static final Logger LOGGER = Logger.getLogger(CMSChannel.class.getName());
 
     public static final int IdRelayNumber = 2138;
     public static final int IdRelaySoftwareVer = 2140;
@@ -28,7 +42,13 @@ public class CMSChannel {
                      "28 05 00 02 04 29 05 00  02 00 2f 05 00 02 00 36 " +
                      "05 00 02 04 2f d6 ab 35  d2");
     }
+    
+    private RelayControllerComputer computer;
 
+    public CMSChannel(RelayControllerComputer computer) {
+        this.computer = computer;
+     }
+    
     protected static void getVersions(String hostName, int portNumber, List<String> requests, List<String> replies) {
         try {
             Socket clientSocket = new Socket(hostName, portNumber);
@@ -51,21 +71,21 @@ public class CMSChannel {
                          out.flush();
                      }
                 }
-                System.out.println("Sent " + data.length + " bytes");
-                System.out.println(request);
+                //System.out.println("Sent " + data.length + " bytes");
+                //System.out.println(request);
                 int received = 0;
                 while (received < 2) {
                     StringBuffer reply = new StringBuffer();
                     int len = in.read(buffer);
                     if (len < 0) {
-                        System.out.println("Connection broken");
+                        //System.out.println("Connection broken");
                         break;
                     }
-                    System.out.println("Read " + len + " bytes");
+                    //System.out.println("Read " + len + " bytes");
                     for (int i=0; i<len; i++) {
                         reply.append(String.format("%02x ", buffer[i]));
                     }
-                    System.out.println(reply.toString());
+                    //System.out.println(reply.toString());
                     int offset = 0;
                     while (offset < reply.length()) {
                         offset = reply.indexOf("f0 ad ", offset);
@@ -86,7 +106,8 @@ public class CMSChannel {
             }
             clientSocket.close();
         } catch (Exception e) {
-            System.out.println("Exception: " + e.getMessage());
+            //System.out.println("Exception: " + e.getMessage());
+            LOGGER.severe("Exception: " + e.getMessage());
         }
     }
 
@@ -101,12 +122,10 @@ public class CMSChannel {
     protected static int unpackMessage(String payload, Map<Integer, String> dataPointMap) {
         String data[] = payload.trim().split("\\s+");
         if (data.length < 10) {
-            System.out.println("Unknown message");
             return -1;
         }
         // ACK payload size 10
         if (data.length == 10) {
-            System.out.println("ACK");
             return 0;
         }
         // first 6 bytes are header and flags
@@ -116,30 +135,25 @@ public class CMSChannel {
         while (begin < end) {
             if (data[begin].compareTo("06") != 0) {
                 // Not reply for CMS GET command
-                System.out.println("Not reply for CMS GET command");
                 // return error because other commands are not supported
                 return -1;
             }
             begin++;
             if (begin + 2 > end) {
                 // No reply length
-                System.out.println("No reply length");
                 break;
             }
             int replyLength = Integer.valueOf(data[begin] + data[begin+1], 16);
             begin += 2;
             if (begin + 2 > end) {
                 // No data point id
-                System.out.println("No data point id");
                 break;
             }
             Integer id = Integer.valueOf(data[begin] + data[begin+1], 16);
-            System.out.println("id: " + id);
             begin += 2;
             int valueLength = replyLength - 2;
             if (begin + valueLength > end) {
                 // No data point value
-                System.out.println("No data point value");
                 dataPointMap.put(id, "");
                 break;
             }
@@ -149,7 +163,6 @@ public class CMSChannel {
                 value.append(" ");
             }
             dataPointMap.put(id, value.toString());
-            System.out.println("value: " + value.toString());
             begin += valueLength;
         }
         return begin - 6;
@@ -197,6 +210,32 @@ public class CMSChannel {
         return connected;
     }
     
+    // TODO: connect to relay by a separate thread
+    public boolean connect() {
+        RelayControllerSlave slave = null;
+        Node node = computer.getNode();
+        if (node instanceof RelayControllerSlave) {
+            slave = (RelayControllerSlave) node;
+        }
+        if (slave == null) {
+            return false;
+        }
+        String hostName = slave.getHostName();
+        int portNumber = slave.getPortNumber();
+        HashMap<Integer, String> dataPointMap = new HashMap<Integer, String>();
+        System.out.println("Connecting to " + hostName + ":" + portNumber);
+        if (!connect(hostName, portNumber, dataPointMap)) {
+            return false;
+        }
+        if (dataPointMap.containsKey(IdRelayNumber)) {
+            computer.setSerialNumber(dataPointMap.get(IdRelayNumber));
+        }
+        if (dataPointMap.containsKey(IdRelaySoftwareVer)) {
+            computer.setSoftwareVersion(dataPointMap.get(IdRelaySoftwareVer));
+        }
+        return true;
+    }
+    
     public static void main(String [] args) {
         System.out.println("Connecting to " + args[0] + ":" + args[1]);
         String hostName = args[0];
@@ -221,5 +260,64 @@ public class CMSChannel {
         }
         System.out.println("Relay serial number: " + serialNumber);
         System.out.println("Relay software version: " + relayVersion);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public <V, T extends Throwable> V call(Callable<V, T> callable) throws IOException, T, InterruptedException {
+        @SuppressWarnings("rawtypes")
+        Class enclosingClass = callable.getClass().getEnclosingClass();
+        if (enclosingClass != null) {
+            // Hack ArchitectureMonitor and ResponseTimeMonitor
+            if (enclosingClass.equals(ArchitectureMonitor.class)) {
+                return (V) computer.getSerialNumber();
+            } else if (enclosingClass.equals(ResponseTimeMonitor.class)) {
+                Data data = null;
+                try {
+                    data = (Data) callable.call();
+                } catch (Throwable t) {
+                }
+                return (V) data;
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public <V, T extends Throwable> Future<V> callAsync(final Callable<V, T> callable) throws IOException {
+        LOGGER.info("callAsync(" + callable.getClass().getEnclosingClass() + "." + callable.getClass().getSimpleName() + ")");
+        V result = null;
+        try {
+            // Synchronous call hack
+            result = call(callable);
+        } catch (Throwable e) {
+        }
+        return Futures.precomputed(result);
+    }
+
+    @Override
+    public void close() throws IOException {
+        LOGGER.info("close()");
+    }
+
+    @Override
+    public void join() throws InterruptedException {
+        LOGGER.info("join()");
+    }
+
+    @Override
+    public void join(long timeout) throws InterruptedException {
+        LOGGER.info("join(" + timeout + ")");
+    }
+
+    @Override
+    public <T> T export(Class<T> type, T instance) {
+        LOGGER.info("export(" + type.getName() + ")");
+        return null;
+    }
+
+    @Override
+    public void syncLocalIO() throws InterruptedException {
+        LOGGER.info("syncLocalIO()");
     }
 }

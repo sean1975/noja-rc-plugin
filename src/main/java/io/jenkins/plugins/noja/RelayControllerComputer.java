@@ -1,52 +1,112 @@
 package io.jenkins.plugins.noja;
 
-import java.util.HashMap;
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.util.List;
 import java.util.concurrent.Future;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
+import javax.servlet.ServletException;
+
+import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.StaplerResponse;
+
+import hudson.model.Computer;
+import hudson.model.Node;
 import hudson.model.Slave;
-import hudson.slaves.SlaveComputer;
+import hudson.remoting.VirtualChannel;
+import hudson.slaves.OfflineCause;
+import hudson.slaves.RetentionStrategy;
 import hudson.util.Futures;
 
-public class RelayControllerComputer extends SlaveComputer {
+public class RelayControllerComputer extends Computer {
 
     private static final Logger LOGGER = Logger.getLogger(RelayControllerComputer.class.getName());
 
-    private boolean offline = true;
+    private String serialNumber;
+    private String softwareVersion;
+    private CMSChannel channel;
 
     public RelayControllerComputer(Slave slave) {
         super(slave);
+        channel = new CMSChannel(this);
     }
-
+    
+    public void setSerialNumber(String serialNumber) {
+        this.serialNumber = serialNumber;
+    }
+    
+    public String getSerialNumber() {
+        return serialNumber;
+    }
+    
+    public void setSoftwareVersion(String softwareVersion) {
+        this.softwareVersion = softwareVersion;
+    }
+    
+    public String getSoftwareVersion() {
+        return softwareVersion;
+    }
+    
+    @Override   
+    public VirtualChannel getChannel() {
+        return channel;
+    }
+    
     @Override
     protected Future<?> _connect(boolean forceReconnect) {
         LOGGER.info("Connect to Relay Controller " + this.getDisplayName());
-        Slave slave = this.getNode();
+        Node node = this.getNode();
         RelayControllerSlave relayControllerSlave = null;
-        if (slave instanceof RelayControllerSlave) {
-            relayControllerSlave = (RelayControllerSlave) slave;
+        if (node instanceof RelayControllerSlave) {
+            relayControllerSlave = (RelayControllerSlave) node;
         }
         if (relayControllerSlave == null) {
             return Futures.precomputed(null);
         }
-        String hostName = relayControllerSlave.getHostName();
-        int portNumber = relayControllerSlave.getPortNumber();
-        HashMap<Integer, String> dataPointMap = new HashMap<Integer, String>();
-        if (CMSChannel.connect(hostName, portNumber, dataPointMap)) {
-            offline = false;
-            LOGGER.info("Serial Number: " + dataPointMap.get(CMSChannel.IdRelayNumber));
+        LOGGER.info("Connecting to Relay Controller " + this.getDisplayName());
+        if (channel.connect()) {
+            LOGGER.info("Serial Number: " + getSerialNumber());
+            LOGGER.info("Software Version: " + getSoftwareVersion());
         }
         return Futures.precomputed(null);
     }
 
     @Override
-    public boolean isOffline() {
-        return offline;
+    public Future<?> disconnect(OfflineCause cause) {
+        LOGGER.info("disconnect(" + cause.toString() + ")");
+        super.disconnect(cause);
+        return Futures.precomputed(null);
     }
-
+    
     @Override
     public Boolean isUnix() {
         return true;
+    }
+
+    @Override
+    public Charset getDefaultCharset() {
+        return Charset.forName("UTF-8");
+    }
+
+    @Override
+    public List<LogRecord> getLogRecords() throws IOException, InterruptedException {
+         return null;
+    }
+
+    @Override
+    public void doLaunchSlaveAgent(StaplerRequest req, StaplerResponse rsp) throws IOException, ServletException {
+    }
+
+    @Override
+    public boolean isConnecting() {
+        return false;
+    }
+
+    @Override
+    public RetentionStrategy getRetentionStrategy() {
+        return RetentionStrategy.NOOP;
     }
 
 }
