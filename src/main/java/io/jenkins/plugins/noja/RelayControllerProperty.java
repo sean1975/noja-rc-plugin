@@ -16,6 +16,14 @@ public class RelayControllerProperty extends OptionalJobProperty<Job<?, ?>> {
         this.relayControllerName = relayControllerName;
     }
 
+    public String getRelayControllerName() {
+        return relayControllerName;
+    }
+    
+    public void setRelayControllerName(String relayControllerName) {
+        this.relayControllerName = relayControllerName;
+    }
+    
     @Extension
     public static class DescriptorImpl extends OptionalJobPropertyDescriptor {
 
