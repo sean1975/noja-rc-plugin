@@ -2,6 +2,8 @@ package io.jenkins.plugins.noja;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Future;
 import java.util.logging.LogRecord;
@@ -12,6 +14,8 @@ import javax.servlet.ServletException;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.StaplerResponse;
 
+import hudson.Util;
+import hudson.model.AbstractProject;
 import hudson.model.Computer;
 import hudson.model.Node;
 import hudson.model.Slave;
@@ -19,6 +23,7 @@ import hudson.remoting.VirtualChannel;
 import hudson.slaves.OfflineCause;
 import hudson.slaves.RetentionStrategy;
 import hudson.util.Futures;
+import jenkins.model.Jenkins;
 
 public class RelayControllerComputer extends Computer {
 
@@ -109,4 +114,20 @@ public class RelayControllerComputer extends Computer {
         return RetentionStrategy.NOOP;
     }
 
+    @Override
+    public List<AbstractProject> getTiedJobs() {
+        Node node = getNode();
+        List<AbstractProject> r = new ArrayList<AbstractProject>();
+        System.out.println("Searching for tired jobs for node " + node.getDisplayName());
+        for (AbstractProject<?,?> p : Jenkins.getInstance().getAllItems(AbstractProject.class)) {
+            for (RelayControllerProperty property : Util.filter(p.getAllProperties(), RelayControllerProperty.class)) {
+                if (property.getRelayControllerName().compareToIgnoreCase(node.getNodeName()) == 0) {
+                    System.out.println(p.getDisplayName() + " is tired to node " + node.getNodeName());
+                    r.add(p);
+                    break;
+                }
+            }
+        }
+        return r.isEmpty() ? Collections.EMPTY_LIST : r;
+    }
 }
