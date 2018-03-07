@@ -12,6 +12,7 @@ import hudson.model.Queue;
 import hudson.model.Slave;
 import hudson.model.Descriptor.FormException;
 import hudson.model.queue.CauseOfBlockage;
+import hudson.model.queue.SubTask;
 import hudson.slaves.ComputerLauncher;
 
 public class RelayControllerSlave extends Slave {
@@ -61,6 +62,11 @@ public class RelayControllerSlave extends Slave {
     
     @Override
     public CauseOfBlockage canTake(final Queue.BuildableItem item) {
+        for (SubTask task : item.task.getSubTasks()) {
+            if (task.getClass().isAssignableFrom(RelayControllerTask.class)) {
+                return null;
+            }
+        }
         return new CauseOfBlockage() {
             public String getShortDescription() {
                 return new String("Project " + item.getDisplayName() + " is not supported on " + getNodeName());

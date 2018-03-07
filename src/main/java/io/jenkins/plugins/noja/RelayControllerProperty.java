@@ -1,10 +1,15 @@
 package io.jenkins.plugins.noja;
 
+import java.util.ArrayList;
+import java.util.Collection;
+
+
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import hudson.Extension;
 import hudson.model.Items;
 import hudson.model.Job;
+import hudson.model.queue.SubTask;
 import jenkins.model.OptionalJobProperty;
 
 public class RelayControllerProperty extends OptionalJobProperty<Job<?, ?>> {
@@ -22,6 +27,12 @@ public class RelayControllerProperty extends OptionalJobProperty<Job<?, ?>> {
     
     public void setRelayControllerName(String relayControllerName) {
         this.relayControllerName = relayControllerName;
+    }
+    
+    public Collection<? extends SubTask> getSubTasks() {
+        ArrayList<RelayControllerTask> tasks = new ArrayList<RelayControllerTask>();
+        tasks.add(new RelayControllerTask(this));
+        return tasks;
     }
     
     @Extension
