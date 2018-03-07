@@ -285,7 +285,7 @@ public class CMSChannel implements VirtualChannel {
 
     @Override
     public <V, T extends Throwable> Future<V> callAsync(final Callable<V, T> callable) throws IOException {
-        LOGGER.info("callAsync(" + callable.getClass().getEnclosingClass() + "." + callable.getClass().getSimpleName() + ")");
+        //LOGGER.info("callAsync(" + callable.getClass().getEnclosingClass() + "." + callable.getClass().getSimpleName() + ")");
         V result = null;
         try {
             // Synchronous call hack
