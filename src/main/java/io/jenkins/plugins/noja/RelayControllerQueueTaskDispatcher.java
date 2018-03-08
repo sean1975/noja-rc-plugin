@@ -23,8 +23,8 @@ public class RelayControllerQueueTaskDispatcher extends QueueTaskDispatcher {
             Job<?, ?> job = (Job<?, ?>) item.task;
             RelayControllerProperty property = job.getProperty(RelayControllerProperty.class);
             if (property != null) {
-                String rc = property.getRelayControllerName();
-                LOGGER.info("Check if relay controller " + rc + " is available");
+                final String rc = property.getRelayControllerName();
+                //LOGGER.info("Check if relay controller " + rc + " is available");
                 Computer c = Jenkins.getInstance().getComputer(rc);
                 RelayControllerComputer computer = null;
                 if (c instanceof RelayControllerComputer) {
@@ -38,7 +38,7 @@ public class RelayControllerQueueTaskDispatcher extends QueueTaskDispatcher {
                 return new CauseOfBlockage() {
                     @Override
                     public String getShortDescription() {
-                        return "Relay controller is not available";
+                        return rc + " is not available";
                     }                    
                 };
             }            

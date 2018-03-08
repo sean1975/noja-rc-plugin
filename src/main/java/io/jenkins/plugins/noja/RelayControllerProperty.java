@@ -2,14 +2,16 @@ package io.jenkins.plugins.noja;
 
 import java.util.ArrayList;
 import java.util.Collection;
-
+import java.util.Collections;
 
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import hudson.Extension;
 import hudson.model.Items;
 import hudson.model.Job;
+import hudson.model.Node;
 import hudson.model.queue.SubTask;
+import jenkins.model.Jenkins;
 import jenkins.model.OptionalJobProperty;
 
 public class RelayControllerProperty extends OptionalJobProperty<Job<?, ?>> {
@@ -29,10 +31,22 @@ public class RelayControllerProperty extends OptionalJobProperty<Job<?, ?>> {
         this.relayControllerName = relayControllerName;
     }
     
+    public RelayControllerSlave getRelayControllerNode() {
+        Node node = Jenkins.getInstance().getNode(relayControllerName);
+        if ((node != null) && (node instanceof RelayControllerSlave)) {
+            return (RelayControllerSlave) node;
+        }
+        return null;
+    }
+    
     public Collection<? extends SubTask> getSubTasks() {
-        ArrayList<RelayControllerTask> tasks = new ArrayList<RelayControllerTask>();
-        tasks.add(new RelayControllerTask(this));
-        return tasks;
+        RelayControllerSlave node = getRelayControllerNode();
+        if (node != null) {
+            ArrayList<RelayControllerTask> tasks = new ArrayList<RelayControllerTask>();
+            tasks.add(new RelayControllerTask(this));
+            return tasks;
+        }
+        return Collections.emptyList();
     }
     
     @Extension

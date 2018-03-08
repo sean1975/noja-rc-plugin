@@ -6,6 +6,8 @@ import java.util.Collections;
 
 import org.acegisecurity.Authentication;
 
+import hudson.Util;
+import hudson.model.AbstractProject;
 import hudson.model.Label;
 import hudson.model.Node;
 import hudson.model.Queue;
@@ -34,8 +36,23 @@ public class RelayControllerTask implements Task {
         return ResourceList.EMPTY;
     }
 
+    public AbstractProject getProject() {
+        for (AbstractProject project : property.getRelayControllerNode().getTiedJobs()) {
+            for (RelayControllerProperty p : Util.filter(project.getAllProperties(), RelayControllerProperty.class)) {
+                if (p.equals(property)) {
+                    return project;
+                }
+            }
+        }
+        return null;
+    }
+    
     @Override
     public String getDisplayName() {
+        AbstractProject project = getProject();
+        if (project != null) {
+            return project.getDisplayName();
+        }
         return "Occupied";
     }
 
@@ -55,6 +72,10 @@ public class RelayControllerTask implements Task {
 
     @Override
     public long getEstimatedDuration() {
+        AbstractProject project = getProject();
+        if (project != null) {
+            return project.getEstimatedDuration();
+        }
         return -1;
     }
 
@@ -119,6 +140,10 @@ public class RelayControllerTask implements Task {
 
     @Override
     public String getUrl() {
+        AbstractProject project = getProject();
+        if (project != null) {
+            return project.getUrl();
+        }
         return "computer/" + getRelayControllerName() + "/";
     }
 

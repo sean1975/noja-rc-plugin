@@ -1,6 +1,9 @@
 package io.jenkins.plugins.noja;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.logging.Logger;
 
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -8,12 +11,15 @@ import org.kohsuke.stapler.DataBoundSetter;
 
 import hudson.Extension;
 import hudson.FilePath;
+import hudson.Util;
+import hudson.model.AbstractProject;
 import hudson.model.Queue;
 import hudson.model.Slave;
 import hudson.model.Descriptor.FormException;
 import hudson.model.queue.CauseOfBlockage;
 import hudson.model.queue.SubTask;
 import hudson.slaves.ComputerLauncher;
+import jenkins.model.Jenkins;
 
 public class RelayControllerSlave extends Slave {
 
@@ -74,6 +80,21 @@ public class RelayControllerSlave extends Slave {
         };
     }
     
+    public List<AbstractProject> getTiedJobs() {
+        List<AbstractProject> r = new ArrayList<AbstractProject>();
+        //System.out.println("Searching for tired jobs for node " + getNodeName());
+        for (AbstractProject<?,?> p : Jenkins.getInstance().getAllItems(AbstractProject.class)) {
+            for (RelayControllerProperty property : Util.filter(p.getAllProperties(), RelayControllerProperty.class)) {
+                if (property.getRelayControllerName().compareToIgnoreCase(getNodeName()) == 0) {
+                    //System.out.println(p.getDisplayName() + " is tired to node " + getNodeName());
+                    r.add(p);
+                    break;
+                }
+            }
+        }
+        return r.isEmpty() ? Collections.EMPTY_LIST : r;
+    }
+
     @Extension
     public static final class DescriptorImpl extends SlaveDescriptor {
 

@@ -117,17 +117,10 @@ public class RelayControllerComputer extends Computer {
     @Override
     public List<AbstractProject> getTiedJobs() {
         Node node = getNode();
-        List<AbstractProject> r = new ArrayList<AbstractProject>();
-        System.out.println("Searching for tired jobs for node " + node.getDisplayName());
-        for (AbstractProject<?,?> p : Jenkins.getInstance().getAllItems(AbstractProject.class)) {
-            for (RelayControllerProperty property : Util.filter(p.getAllProperties(), RelayControllerProperty.class)) {
-                if (property.getRelayControllerName().compareToIgnoreCase(node.getNodeName()) == 0) {
-                    System.out.println(p.getDisplayName() + " is tired to node " + node.getNodeName());
-                    r.add(p);
-                    break;
-                }
-            }
+        if (node instanceof RelayControllerSlave) {
+            RelayControllerSlave slave = (RelayControllerSlave) node;
+            return slave.getTiedJobs();
         }
-        return r.isEmpty() ? Collections.EMPTY_LIST : r;
+        return Collections.EMPTY_LIST;
     }
 }
