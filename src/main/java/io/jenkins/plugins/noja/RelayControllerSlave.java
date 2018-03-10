@@ -125,13 +125,13 @@ public class RelayControllerSlave extends Slave {
                 return FormValidation.error("Hostname cannot be empty");
             }
             try {
-                if (!InetAddress.getByName(hostName).isReachable(3000)) {
-                    return FormValidation.error(hostName + " is not reachable");
-                }
+                InetAddress.getByName(hostName);
             } catch (UnknownHostException e) {
-                return FormValidation.error(hostName + " cannot be resolved into IP address");
-            } catch (IOException e) {
-                return FormValidation.error(e.getMessage());
+                if (hostName.matches("^[0-9.]+$")) {
+                    return FormValidation.error(hostName + " is not valid IPv4 address");
+                } else {
+                    return FormValidation.error(hostName + " cannot be resolved into IP address");
+                }
             }
             return FormValidation.ok();
         }    
