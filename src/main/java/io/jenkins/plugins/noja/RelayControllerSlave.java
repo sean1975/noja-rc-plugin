@@ -1,6 +1,8 @@
 package io.jenkins.plugins.noja;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -8,6 +10,7 @@ import java.util.logging.Logger;
 
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
+import org.kohsuke.stapler.QueryParameter;
 
 import hudson.Extension;
 import hudson.FilePath;
@@ -19,6 +22,7 @@ import hudson.model.Descriptor.FormException;
 import hudson.model.queue.CauseOfBlockage;
 import hudson.model.queue.SubTask;
 import hudson.slaves.ComputerLauncher;
+import hudson.util.FormValidation;
 import jenkins.model.Jenkins;
 
 public class RelayControllerSlave extends Slave {
@@ -29,13 +33,16 @@ public class RelayControllerSlave extends Slave {
     private int portNumber;
 
     @DataBoundConstructor
-    public RelayControllerSlave(String name, ComputerLauncher launcher) throws FormException, IOException {
+    public RelayControllerSlave(String name, String nodeDescription, String hostName, String portNumber) throws FormException, IOException {
         super(name, null, new ComputerLauncher() {
             public boolean isLaunchSupported() {
                 return false;
             }
         });
         setNumExecutors(1);
+        setNodeDescription(nodeDescription);
+        setHostName(hostName);
+        setPortNumber(portNumber);
     }
 
     @DataBoundSetter
@@ -49,7 +56,11 @@ public class RelayControllerSlave extends Slave {
 
     @DataBoundSetter
     public void setPortNumber(String portNumber) {
-        this.portNumber = Integer.parseInt(portNumber);
+        try {
+            this.portNumber = Integer.parseInt(portNumber);
+        } catch (NumberFormatException e) {
+            LOGGER.warning("Port number must be number");
+        }
     }
 
     public int getPortNumber() {
@@ -70,7 +81,9 @@ public class RelayControllerSlave extends Slave {
     public CauseOfBlockage canTake(final Queue.BuildableItem item) {
         for (SubTask task : item.task.getSubTasks()) {
             if (task.getClass().isAssignableFrom(RelayControllerTask.class)) {
-                return null;
+                if (task.getAssignedLabel().matches(this)) {
+                    return null;
+                }
             }
         }
         return new CauseOfBlockage() {
@@ -105,5 +118,41 @@ public class RelayControllerSlave extends Slave {
             // src/main/resources/io/jenkins/plugins/noja/RelayControllerSlave/newInstanceDetail.jelly
             return "Relay Controller";
         }
+        
+        public FormValidation doCheckHostName(@QueryParameter String value) {
+            String hostName = Util.fixEmptyAndTrim(value);
+            if (hostName==null || hostName.length() == 0) {
+                return FormValidation.error("Hostname cannot be empty");
+            }
+            try {
+                if (!InetAddress.getByName(hostName).isReachable(3000)) {
+                    return FormValidation.error(hostName + " is not reachable");
+                }
+            } catch (UnknownHostException e) {
+                return FormValidation.error(hostName + " cannot be resolved into IP address");
+            } catch (IOException e) {
+                return FormValidation.error(e.getMessage());
+            }
+            return FormValidation.ok();
+        }    
+
+        public FormValidation doCheckPortNumber(@QueryParameter String value) {
+            String portNumber = Util.fixEmptyAndTrim(value);
+            if (portNumber==null || portNumber.length() == 0) {
+                return FormValidation.error("Port number cannot be empty");
+            }
+            if (!portNumber.matches("^[1-9][0-9]{0,4}$")) {
+                return FormValidation.error("Invalid port number " + portNumber);
+            }
+            try {
+                int number = Integer.parseInt(portNumber);
+                if (number > 65535) {
+                    return FormValidation.error("Port number cannot be larger than 65535");
+                }
+            } catch (NumberFormatException e) {
+                FormValidation.error("Invalid port number " + portNumber);
+            }
+            return FormValidation.ok();
+        }    
     }
 }
