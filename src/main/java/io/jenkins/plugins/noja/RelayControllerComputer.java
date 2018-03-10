@@ -2,7 +2,6 @@ package io.jenkins.plugins.noja;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Future;
@@ -14,7 +13,6 @@ import javax.servlet.ServletException;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.StaplerResponse;
 
-import hudson.Util;
 import hudson.model.AbstractProject;
 import hudson.model.Computer;
 import hudson.model.Node;
@@ -23,39 +21,36 @@ import hudson.remoting.VirtualChannel;
 import hudson.slaves.OfflineCause;
 import hudson.slaves.RetentionStrategy;
 import hudson.util.Futures;
-import jenkins.model.Jenkins;
 
 public class RelayControllerComputer extends Computer {
 
     private static final Logger LOGGER = Logger.getLogger(RelayControllerComputer.class.getName());
 
-    private String serialNumber;
-    private String softwareVersion;
     private CMSChannel channel;
 
     public RelayControllerComputer(Slave slave) {
         super(slave);
-        channel = new CMSChannel(this);
     }
-    
-    public void setSerialNumber(String serialNumber) {
-        this.serialNumber = serialNumber;
-    }
-    
-    public String getSerialNumber() {
-        return serialNumber;
-    }
-    
-    public void setSoftwareVersion(String softwareVersion) {
-        this.softwareVersion = softwareVersion;
-    }
-    
-    public String getSoftwareVersion() {
-        return softwareVersion;
-    }
-    
+
     @Override   
-    public VirtualChannel getChannel() {
+    public synchronized VirtualChannel getChannel() {
+        if (channel == null) {
+            Node slave = getNode();
+            if (slave instanceof RelayControllerSlave) {
+                RelayControllerSlave relayControllerSlave = (RelayControllerSlave) slave;
+                String hostName = relayControllerSlave.getHostName();
+                int portNumber = relayControllerSlave.getPortNumber();
+                try {
+                    channel = new CMSChannel(hostName, portNumber);
+                } catch (Exception e) {
+                    LOGGER.warning(e.getMessage());
+                }
+                if (!channel.connect()) {
+                    LOGGER.warning("Failed to connect to " + relayControllerSlave.getNodeName());
+                }
+            }
+          
+        }
         return channel;
     }
     
@@ -71,9 +66,9 @@ public class RelayControllerComputer extends Computer {
             return Futures.precomputed(null);
         }
         LOGGER.info("Connecting to Relay Controller " + this.getDisplayName());
-        if (channel.connect()) {
-            LOGGER.info("Serial Number: " + getSerialNumber());
-            LOGGER.info("Software Version: " + getSoftwareVersion());
+        CMSChannel channel = (CMSChannel) getChannel();
+        if (channel == null) {
+            return Futures.precomputed(null);
         }
         return Futures.precomputed(null);
     }

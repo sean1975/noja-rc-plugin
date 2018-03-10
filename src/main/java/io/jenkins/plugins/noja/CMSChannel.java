@@ -1,5 +1,6 @@
 package io.jenkins.plugins.noja;
 
+import java.net.InetAddress;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,7 +11,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.DataInputStream;
 
-import hudson.model.Node;
 import hudson.node_monitors.ArchitectureMonitor;
 import hudson.node_monitors.ResponseTimeMonitor;
 import hudson.node_monitors.ResponseTimeMonitor.Data;
@@ -26,6 +26,7 @@ public class CMSChannel implements VirtualChannel {
 
     public static final int IdRelayNumber = 2138;
     public static final int IdRelaySoftwareVer = 2140;
+    public static final int IdRelayHardwareVer = 2141;
 
     private static final List<String> requests;
     static {
@@ -43,11 +44,19 @@ public class CMSChannel implements VirtualChannel {
                      "05 00 02 04 2f d6 ab 35  d2");
     }
     
-    private RelayControllerComputer computer;
+    private String hostName;
+    private int portNumber;
+    HashMap<Integer, String> dataPointMap;
 
-    public CMSChannel(RelayControllerComputer computer) {
-        this.computer = computer;
-     }
+    public CMSChannel(String hostName, int portNumber) throws Exception {
+        InetAddress.getByName(hostName);
+        if (portNumber < 1 || portNumber > 65535) {
+            throw new Exception("Invalid port number " + portNumber);
+        }
+        this.hostName = hostName;
+        this.portNumber = portNumber;
+        this.dataPointMap = new HashMap<Integer, String>();
+    }
     
     protected static void getVersions(String hostName, int portNumber, List<String> requests, List<String> replies) {
         try {
@@ -180,16 +189,23 @@ public class CMSChannel implements VirtualChannel {
         return buffer.toString();
     }
 
-    protected static String getSoftwareVersion(Map<Integer, String> dataPointMap) {
-        if (dataPointMap.containsKey(IdRelaySoftwareVer)) {
-            return getStringData(dataPointMap.get(IdRelaySoftwareVer));
+    public String getHardwareVersion() {
+        if (dataPointMap.containsKey(IdRelayHardwareVer)) {
+            return dataPointMap.get(IdRelayHardwareVer);
         }
-        return null;
+        return "";
+    }
+    
+    public String getSoftwareVersion() {
+        if (dataPointMap.containsKey(IdRelaySoftwareVer)) {
+            return dataPointMap.get(IdRelaySoftwareVer);
+        }
+        return "";
     }
 
-    protected static String getSerialNumber(Map<Integer, String> dataPointMap) {
+    public String getSerialNumber() {
         if (dataPointMap.containsKey(IdRelayNumber)) {
-            return getStringData(dataPointMap.get(IdRelayNumber));
+            return dataPointMap.get(IdRelayNumber);
         }
         return null;
     }
@@ -201,37 +217,22 @@ public class CMSChannel implements VirtualChannel {
         for (int i=0; i<replies.size(); i++) {
             unpackMessage(replies.get(i), dataPointMap);
         }
-        if (dataPointMap.containsKey(IdRelaySoftwareVer)) {
-            dataPointMap.put(IdRelaySoftwareVer, getSoftwareVersion(dataPointMap));
-        }
-        if (dataPointMap.containsKey(IdRelayNumber)) {
-            dataPointMap.put(IdRelayNumber, getSerialNumber(dataPointMap));
-        }
         return connected;
     }
     
     // TODO: connect to relay by a separate thread
     public boolean connect() {
-        RelayControllerSlave slave = null;
-        Node node = computer.getNode();
-        if (node instanceof RelayControllerSlave) {
-            slave = (RelayControllerSlave) node;
-        }
-        if (slave == null) {
-            return false;
-        }
-        String hostName = slave.getHostName();
-        int portNumber = slave.getPortNumber();
-        HashMap<Integer, String> dataPointMap = new HashMap<Integer, String>();
-        System.out.println("Connecting to " + hostName + ":" + portNumber);
         if (!connect(hostName, portNumber, dataPointMap)) {
             return false;
         }
-        if (dataPointMap.containsKey(IdRelayNumber)) {
-            computer.setSerialNumber(dataPointMap.get(IdRelayNumber));
+        if (dataPointMap.containsKey(IdRelayHardwareVer)) {
+            dataPointMap.put(IdRelayHardwareVer, getStringData(dataPointMap.get(IdRelayHardwareVer)));
         }
         if (dataPointMap.containsKey(IdRelaySoftwareVer)) {
-            computer.setSoftwareVersion(dataPointMap.get(IdRelaySoftwareVer));
+            dataPointMap.put(IdRelaySoftwareVer, getStringData(dataPointMap.get(IdRelaySoftwareVer)));
+        }
+        if (dataPointMap.containsKey(IdRelayNumber)) {
+            dataPointMap.put(IdRelayNumber, getStringData(dataPointMap.get(IdRelayNumber)));
         }
         return true;
     }
@@ -252,10 +253,10 @@ public class CMSChannel implements VirtualChannel {
                 System.out.println(id + " => " + dataPointMap.get(id));
             }
             if (dataPointMap.containsKey(IdRelaySoftwareVer)) {
-                relayVersion = getSoftwareVersion(dataPointMap);
+                relayVersion = getStringData(dataPointMap.get(IdRelaySoftwareVer));
             }
             if (dataPointMap.containsKey(IdRelayNumber)) {
-                serialNumber = getSerialNumber(dataPointMap);
+                serialNumber = getStringData(dataPointMap.get(IdRelayNumber));
             }
         }
         System.out.println("Relay serial number: " + serialNumber);
@@ -270,7 +271,7 @@ public class CMSChannel implements VirtualChannel {
         if (enclosingClass != null) {
             // Hack ArchitectureMonitor and ResponseTimeMonitor
             if (enclosingClass.equals(ArchitectureMonitor.class)) {
-                return (V) computer.getSerialNumber();
+                return (V) (getHardwareVersion() + "(" + getSerialNumber() + ")");
             } else if (enclosingClass.equals(ResponseTimeMonitor.class)) {
                 Data data = null;
                 try {
