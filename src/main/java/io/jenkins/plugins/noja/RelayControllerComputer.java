@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
@@ -26,37 +28,46 @@ public class RelayControllerComputer extends Computer {
 
     private static final Logger LOGGER = Logger.getLogger(RelayControllerComputer.class.getName());
 
+    // Methods to access member variable channel must be synchronized
     private CMSChannel channel;
+    private Future<?> lastAttempt;
+    private ExecutorService executor;
 
     public RelayControllerComputer(Slave slave) {
         super(slave);
+        executor = Executors.newSingleThreadExecutor();
     }
 
-    @Override   
-    public synchronized VirtualChannel getChannel() {
-        if (channel == null) {
-            Node slave = getNode();
-            if (slave instanceof RelayControllerSlave) {
-                RelayControllerSlave relayControllerSlave = (RelayControllerSlave) slave;
-                String hostName = relayControllerSlave.getHostName();
-                int portNumber = relayControllerSlave.getPortNumber();
-                try {
-                    channel = new CMSChannel(hostName, portNumber);
-                } catch (Exception e) {
-                    LOGGER.warning(e.getMessage());
-                }
-                if (!channel.connect()) {
-                    LOGGER.warning("Failed to connect to " + relayControllerSlave.getNodeName());
-                }
+    public void createChannel() {
+        synchronized (this) {
+            RelayControllerSlave relayControllerSlave = (RelayControllerSlave) getNode();
+            String hostName = relayControllerSlave.getHostName();
+            int portNumber = relayControllerSlave.getPortNumber();
+            CMSChannel newChannel = null;
+            try {
+                newChannel = new CMSChannel(hostName, portNumber);
+            } catch (Exception e) {
+                LOGGER.warning(e.getMessage());
             }
-          
+            if (!newChannel.connect()) {
+                LOGGER.warning("Failed to connect to " + relayControllerSlave.getNodeName());
+            } else {
+                LOGGER.info("Connected to " + relayControllerSlave.getNodeName());
+                channel = newChannel;
+            }
         }
-        return channel;
+    }
+    
+    @Override   
+    public VirtualChannel getChannel() {
+        synchronized (this) {
+            return channel;
+        }
     }
     
     @Override
     protected Future<?> _connect(boolean forceReconnect) {
-        LOGGER.info("Connect to Relay Controller " + this.getDisplayName());
+        //LOGGER.info("Connect to Relay Controller " + this.getDisplayName());
         Node node = this.getNode();
         RelayControllerSlave relayControllerSlave = null;
         if (node instanceof RelayControllerSlave) {
@@ -65,18 +76,21 @@ public class RelayControllerComputer extends Computer {
         if (relayControllerSlave == null) {
             return Futures.precomputed(null);
         }
-        LOGGER.info("Connecting to Relay Controller " + this.getDisplayName());
-        CMSChannel channel = (CMSChannel) getChannel();
-        if (channel == null) {
-            return Futures.precomputed(null);
-        }
-        return Futures.precomputed(null);
+        LOGGER.info("Connecting to Relay Controller " + this.getDisplayName() + " forceReconnect = " + (forceReconnect ? "true" : "false"));
+        lastAttempt = executor.submit(new Runnable() {
+            @Override
+            public void run() {
+                createChannel();                
+            } 
+        });
+        return lastAttempt;
     }
 
     @Override
     public Future<?> disconnect(OfflineCause cause) {
         LOGGER.info("disconnect(" + cause.toString() + ")");
         super.disconnect(cause);
+        executor.shutdownNow();
         return Futures.precomputed(null);
     }
     
@@ -97,11 +111,15 @@ public class RelayControllerComputer extends Computer {
 
     @Override
     public void doLaunchSlaveAgent(StaplerRequest req, StaplerResponse rsp) throws IOException, ServletException {
+        LOGGER.info("doLaunchSlaveAgent: " + req.getPathInfo());
     }
 
     @Override
     public boolean isConnecting() {
-        return false;
+        if (lastAttempt == null || lastAttempt.isDone() || lastAttempt.isCancelled()) {
+            return false;
+        }
+        return true;
     }
 
     @Override
