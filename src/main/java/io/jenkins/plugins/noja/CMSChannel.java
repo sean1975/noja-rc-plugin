@@ -1,10 +1,13 @@
 package io.jenkins.plugins.noja;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 import java.util.HashMap;
 import java.io.DataOutputStream;
@@ -46,7 +49,7 @@ public class CMSChannel implements VirtualChannel {
     
     private String hostName;
     private int portNumber;
-    HashMap<Integer, String> dataPointMap;
+    ConcurrentHashMap<Integer, String> dataPointMap;
 
     public CMSChannel(String hostName, int portNumber) throws Exception {
         InetAddress.getByName(hostName);
@@ -55,12 +58,19 @@ public class CMSChannel implements VirtualChannel {
         }
         this.hostName = hostName;
         this.portNumber = portNumber;
-        this.dataPointMap = new HashMap<Integer, String>();
+        this.dataPointMap = new ConcurrentHashMap<Integer, String>();
     }
     
     protected static void getVersions(String hostName, int portNumber, List<String> requests, List<String> replies) {
         try {
-            Socket clientSocket = new Socket(hostName, portNumber);
+            InetSocketAddress address = new InetSocketAddress(hostName, portNumber);
+            if (address.isUnresolved()) {
+                LOGGER.severe(hostName + " cannot be resolved into IP address");
+                return;
+            }
+            Socket clientSocket = new Socket();
+            clientSocket.connect((SocketAddress) address, 3000);
+            clientSocket.setSoTimeout(3000);
             DataOutputStream out = new DataOutputStream(clientSocket.getOutputStream());
             DataInputStream in = new DataInputStream(clientSocket.getInputStream());
             byte[] buffer = new byte[1024];
@@ -116,7 +126,7 @@ public class CMSChannel implements VirtualChannel {
             clientSocket.close();
         } catch (Exception e) {
             //System.out.println("Exception: " + e.getMessage());
-            LOGGER.severe("Exception: " + e.getMessage());
+            LOGGER.severe("Failed to connect to " + hostName + ":" + portNumber + ", error message: " + e.getMessage());
         }
     }
 
@@ -271,7 +281,16 @@ public class CMSChannel implements VirtualChannel {
         if (enclosingClass != null) {
             // Hack ArchitectureMonitor and ResponseTimeMonitor
             if (enclosingClass.equals(ArchitectureMonitor.class)) {
-                return (V) (getHardwareVersion() + "(" + getSerialNumber() + ")");
+                String arch = "";
+                String hardwareVersion = getHardwareVersion();
+                if (hardwareVersion != null && hardwareVersion.length() > 0) {
+                    arch += hardwareVersion;
+                }               
+                String serialNumber = getSerialNumber();
+                if (serialNumber != null && serialNumber.length() > 0) {
+                    arch += "(" + serialNumber + ")";
+                }
+                return (V) arch;
             } else if (enclosingClass.equals(ResponseTimeMonitor.class)) {
                 Data data = null;
                 try {
