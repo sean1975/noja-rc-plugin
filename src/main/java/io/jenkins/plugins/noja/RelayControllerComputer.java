@@ -31,6 +31,7 @@ public class RelayControllerComputer extends Computer {
     // Methods to access member variable channel must be synchronized
     private CMSChannel channel;
     private Future<?> lastAttempt;
+    private transient int numRetryAttempt;
     private ExecutorService executor;
 
     public RelayControllerComputer(Slave slave) {
@@ -38,29 +39,38 @@ public class RelayControllerComputer extends Computer {
         executor = Executors.newSingleThreadExecutor();
     }
 
-    public void createChannel() {
+    public boolean createChannel() {
+        RelayControllerSlave relayControllerSlave = (RelayControllerSlave) getNode();
+        String hostName = relayControllerSlave.getHostName();
+        int portNumber = relayControllerSlave.getPortNumber();
+        CMSChannel newChannel = null;
+        try {
+            newChannel = new CMSChannel(hostName, portNumber);
+        } catch (Exception e) {
+            LOGGER.warning(e.getMessage());
+        }
+        if (!newChannel.connect()) {
+            LOGGER.warning("Failed to connect to " + relayControllerSlave.getNodeName());
+            return false;
+        } else {
+            LOGGER.info("Connected to " + relayControllerSlave.getNodeName());
+            setChannel(newChannel);
+            return true;
+        }
+    }
+    
+    protected void setChannel(CMSChannel channel) {
         synchronized (this) {
-            RelayControllerSlave relayControllerSlave = (RelayControllerSlave) getNode();
-            String hostName = relayControllerSlave.getHostName();
-            int portNumber = relayControllerSlave.getPortNumber();
-            CMSChannel newChannel = null;
-            try {
-                newChannel = new CMSChannel(hostName, portNumber);
-            } catch (Exception e) {
-                LOGGER.warning(e.getMessage());
-            }
-            if (!newChannel.connect()) {
-                LOGGER.warning("Failed to connect to " + relayControllerSlave.getNodeName());
-            } else {
-                LOGGER.info("Connected to " + relayControllerSlave.getNodeName());
-                channel = newChannel;
-            }
+            this.channel = channel;
         }
     }
     
     @Override   
     public VirtualChannel getChannel() {
         synchronized (this) {
+            if (channel == null) {
+                connect(false);
+            }
             return channel;
         }
     }
@@ -68,6 +78,12 @@ public class RelayControllerComputer extends Computer {
     @Override
     protected Future<?> _connect(boolean forceReconnect) {
         //LOGGER.info("Connect to Relay Controller " + this.getDisplayName());
+        if (!forceReconnect && isConnecting()) {
+            return lastAttempt;
+        }
+        if (!forceReconnect && numRetryAttempt>6 && (numRetryAttempt%60)!=0) {
+            return Futures.precomputed(null);
+        }
         Node node = this.getNode();
         RelayControllerSlave relayControllerSlave = null;
         if (node instanceof RelayControllerSlave) {
@@ -80,7 +96,11 @@ public class RelayControllerComputer extends Computer {
         lastAttempt = executor.submit(new Runnable() {
             @Override
             public void run() {
-                createChannel();                
+                if (createChannel()) {
+                    numRetryAttempt = 0;
+                } else {
+                    numRetryAttempt++;
+                }
             } 
         });
         return lastAttempt;
@@ -88,7 +108,7 @@ public class RelayControllerComputer extends Computer {
 
     @Override
     public Future<?> disconnect(OfflineCause cause) {
-        LOGGER.info("disconnect(" + cause.toString() + ")");
+        LOGGER.info("disconnect " + this.getDisplayName() + " (" + cause.toString() + ")");
         super.disconnect(cause);
         executor.shutdownNow();
         return Futures.precomputed(null);
