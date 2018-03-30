@@ -13,7 +13,20 @@
   </f:entry>
 
   <f:entry title="${%Port Number}" field="portNumber">
-    <f:textbox />
+    <f:textbox default="5000"/>
   </f:entry>
 
+  <j:if test="${instance != null}">
+    <j:if test="${!instance.envVars.isEmpty()}">
+      <f:section title="${%Environment variables to be injected in build environment}" />
+      <j:forEach items="${instance.envVars.entrySet()}" var="env">
+        <f:entry title="${env.key}">
+          <div style="display:none;">
+            <f:readOnlyTextbox name="env.key" value="${env.key}" />
+          </div>
+          <f:readOnlyTextbox name="env.value" value="${env.value}" />
+        </f:entry>
+      </j:forEach>
+    </j:if>
+  </j:if>
 </j:jelly>

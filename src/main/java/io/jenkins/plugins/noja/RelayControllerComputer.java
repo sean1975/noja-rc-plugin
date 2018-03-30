@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -39,6 +40,21 @@ public class RelayControllerComputer extends Computer {
         executor = Executors.newSingleThreadExecutor();
     }
 
+    public void updateNodeEnvVars() {
+        RelayControllerSlave relayControllerSlave = (RelayControllerSlave) getNode();
+        synchronized (this) {
+            if (channel != null) {
+                LOGGER.info("Update environment variables for " + relayControllerSlave.getDisplayName());
+                Map<String, String> envVars = relayControllerSlave.getEnvVars();
+                envVars.put("RC_SERIALNUMBER", channel.getSerialNumber());
+                envVars.put("RC_SOFTWAREVERSION", channel.getSoftwareVersion());
+                envVars.put("RC_HARDWAREVERSION", channel.getHardwareVersion());
+            } else {
+                LOGGER.info("Channel has not been created for " + relayControllerSlave.getDisplayName());;
+            }
+        }
+    }
+    
     public boolean createChannel() {
         RelayControllerSlave relayControllerSlave = (RelayControllerSlave) getNode();
         String hostName = relayControllerSlave.getHostName();
@@ -55,6 +71,7 @@ public class RelayControllerComputer extends Computer {
         } else {
             LOGGER.info("Connected to " + relayControllerSlave.getNodeName());
             setChannel(newChannel);
+            updateNodeEnvVars();
             return true;
         }
     }

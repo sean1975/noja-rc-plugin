@@ -1,8 +1,7 @@
 package io.jenkins.plugins.noja;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.util.Map;
 
 import hudson.EnvVars;
 import hudson.Extension;
@@ -18,19 +17,10 @@ public class RelayControllerEnvironmentContributor extends EnvironmentContributo
         RelayControllerProperty property = (RelayControllerProperty) j.getProperty(RelayControllerProperty.class.getName());
         if (property != null) {
             RelayControllerSlave node = property.getRelayControllerNode();
-            String hostName = node.getHostName();
-            if (!hostName.matches("^[1-9][0-9]{0,2}\\.[1-9][0-9]{0,2}\\.[1-9][0-9]{0,2}\\.[1-9][0-9]{0,2}$")) {
-                try {
-                    hostName = InetAddress.getByName(hostName).getHostAddress();
-                } catch (UnknownHostException e) {
-                    listener.getLogger().println("Hostname " + hostName + " cannot be resolved into IP address");
-                }
+            Map<String, String> envVars = node.getEnvVars();
+            for (Map.Entry<String, String> entry : envVars.entrySet()) {
+                env.put(entry.getKey(), entry.getValue());
             }
-            String portNumber = String.valueOf(node.getPortNumber());
-            env.put("RC_IPADDRESS", hostName);
-            env.put("RC_PORTNUMBER", portNumber);
-            listener.getLogger().println("RC_IPADDRESS=" + hostName);
-            listener.getLogger().println("RC_PORTNUMBER=" + portNumber);
         }
     }
 }

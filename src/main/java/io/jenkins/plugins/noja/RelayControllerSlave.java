@@ -5,17 +5,21 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.StaplerRequest;
 
 import hudson.Extension;
 import hudson.FilePath;
 import hudson.Util;
 import hudson.model.AbstractProject;
+import hudson.model.Node;
 import hudson.model.Queue;
 import hudson.model.Slave;
 import hudson.model.Descriptor.FormException;
@@ -24,6 +28,8 @@ import hudson.model.queue.SubTask;
 import hudson.slaves.ComputerLauncher;
 import hudson.util.FormValidation;
 import jenkins.model.Jenkins;
+import net.sf.json.JSONArray;
+import net.sf.json.JSONObject;
 
 public class RelayControllerSlave extends Slave {
 
@@ -31,6 +37,7 @@ public class RelayControllerSlave extends Slave {
 
     private String hostName;
     private int portNumber;
+    public HashMap<String, String> envVars;
 
     @DataBoundConstructor
     public RelayControllerSlave(String name, String nodeDescription, String hostName, String portNumber) throws FormException, IOException {
@@ -43,8 +50,31 @@ public class RelayControllerSlave extends Slave {
         setNodeDescription(nodeDescription);
         setHostName(hostName);
         setPortNumber(portNumber);
+        
+        envVars = new HashMap<String, String>();
+        envVars.put("RC_NAME", name);
+        if (!hostName.matches("^[1-9][0-9]{0,2}\\.[1-9][0-9]{0,2}\\.[1-9][0-9]{0,2}\\.[1-9][0-9]{0,2}$")) {
+            try {
+                hostName = InetAddress.getByName(hostName).getHostAddress();
+            } catch (UnknownHostException e) {
+                LOGGER.warning("Hostname " + hostName + " cannot be resolved into IP address");
+            }
+        }
+        envVars.put("RC_IPADDRESS", hostName);
+        envVars.put("RC_PORTNUMBER", portNumber);
     }
 
+    public Node reconfigure(final StaplerRequest req, JSONObject form) throws FormException {
+        RelayControllerSlave node = (RelayControllerSlave) super.reconfigure(req, form);
+        Map<String, String> vars = node.getEnvVars();
+        JSONArray keys = form.optJSONArray("key");
+        JSONArray values = form.optJSONArray("value");
+        for (int i=0; i<keys.size() && i<values.size(); i++) {
+            vars.put(keys.getString(i), values.getString(i));
+        }
+        return node;
+    }
+    
     @DataBoundSetter
     public void setHostName(String hostName) {
         this.hostName = hostName;
@@ -66,7 +96,11 @@ public class RelayControllerSlave extends Slave {
     public int getPortNumber() {
         return portNumber;
     }
-
+    
+    public Map<String, String> getEnvVars() {
+        return envVars;
+    }
+    
     @Override
     public RelayControllerComputer createComputer() {
         return new RelayControllerComputer(this);
